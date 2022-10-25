@@ -1,7 +1,7 @@
 ---
 # -------------------- setting before run exps --------------------
 plot_name: GCQL
-engine: td3_bc_gc
+engine: GCQL
 exp_name: GCQL
 version: v0
 data_dir: ./test_data/

@@ -13,64 +13,10 @@ import shutil
 import numpy as np
 import torch
 import os.path as osp, time, atexit, os
-# from core.mpi_tools import mpi_statistics_scalar
-# from core.serialization_utils import convert_json
 from os.path import dirname
 import json
-# import logging
 
 time_start = time.time()
-
-def print_log_info(logger,all_steps,test_score,max_score,version,seed,engine):
-    ## log
-    logger.log_tabular('Iterations',int(all_steps))
-    # logger.log_tabular('q_pi_min', average_only=True)
-    # logger.log_tabular('q_pi_mean', average_only=True)
-    # logger.log_tabular('Q1Vals', average_only=True)
-    # logger.log_tabular('Q2Vals', average_only=True)
-    # logger.log_tabular('Q3Vals', average_only=True)
-    # logger.log_tabular('Q4Vals', average_only=True)
-    # logger.log_tabular('Q5Vals', average_only=True)
-    # logger.log_tabular('Q1TVals', average_only=True)
-    # logger.log_tabular('Q2TVals', average_only=True)
-    # logger.log_tabular('Q3TVals', average_only=True)
-    # logger.log_tabular('Q4TVals', average_only=True)
-    # logger.log_tabular('Q5TVals', average_only=True)
-    logger.log_tabular('LossPi', average_only=True)
-    logger.log_tabular('LossQ', with_min_and_max=True)
-
-    if engine == "SAC" or "TD3":
-        logger.log_tabular('Q1Vals', average_only=True)
-        logger.log_tabular('Q2Vals', average_only=True)
-
-    if engine == "PQL":
-        logger.log_tabular('TargetQ', with_min_and_max=True)
-        logger.log_tabular('CurrentQ1', with_min_and_max=True)
-        logger.log_tabular('CurrentQ2', average_only=True)
-
-    if engine == "P0" or engine == "REDQ_TD3":
-        logger.log_tabular('Backup', average_only=True) #Qstd
-        logger.log_tabular('Qstd', with_min_and_max=True) #Qstd
-
-        logger.log_tabular('QValues_0', average_only=True)
-        # logger.log_tabular('QValues_1', average_only=True)
-        # logger.log_tabular('QValues_2', average_only=True)
-        # logger.log_tabular('QValues_3', average_only=True)
-        # logger.log_tabular('QValues_4', average_only=True)
-
-        logger.log_tabular('QTValues_0', average_only=True)
-        # logger.log_tabular('QTValues_1', average_only=True)
-        # logger.log_tabular('QTValues_2', average_only=True)
-        # logger.log_tabular('QTValues_3', average_only=True)
-        # logger.log_tabular('QTValues_4', average_only=True)
-
-
-    logger.log_tabular('TestScore',int(test_score))
-    logger.dump_tabular()
-    record = f"Iteration:{int(all_steps)},MaxTestScore:{int(max_score)},TestScore:{int(test_score)},Time:{int(time.time()-time_start)},Version:{version},Seed:{seed}\n"
-    logger.save_print(record)
-    # exit()
-
 
 
 def convert_json(obj):
@@ -176,16 +122,10 @@ def setup_logger_kwargs(args,version, env, exp_name, plot_name, seed=None, model
 
     # Datestamp forcing
     datestamp = datestamp or FORCE_DATESTAMP
-    # if "debug" in version: 
-    #     data_dir = "./debug"
-    # else:
     data_dir = f"{data_dir}{exp_name}"
-    # data_dir = f"%s%s"%data_dir%exp_name
-
     # Make base path
     ymd_time = time.strftime("%Y-%m-%d_") if datestamp else ''
     relpath = ''.join([ymd_time,plot_name,"_p",str(args.p_online),"_osize",str(args.online_size)])
-    # model_dir = osp.join(data_dir, env, relpath,model_dir+"_s0/models")
 
     if seed is not None:
         # Make a seed-specific subfolder in the experiment directory.
@@ -195,11 +135,7 @@ def setup_logger_kwargs(args,version, env, exp_name, plot_name, seed=None, model
         else:
             subfolder = ''.join([str(version), '_s', str(seed)])
         relpath = osp.join(relpath, subfolder)
-    
-    # print(f"relpath:{relpath}")
 
-    # data_dir = data_dir or DEFAULT_DATA_DIR
-    # engine_path = osp.join(data_dir, env,engine)
     logger_kwargs = dict(output_dir=osp.join(data_dir, env, relpath),plot_name=plot_name,model_dir=model_dir,version=version,plot_name_path=osp.join(data_dir, env,plot_name))
     return logger_kwargs
 
@@ -232,26 +168,22 @@ class Logger:
                 hyperparameter configuration with multiple random seeds, you
                 should give them all the same ``exp_name``.)
         """
-        # super().__init__()
 
-        if True:#proc_id()==0:
-            self.output_dir = output_dir or "/tmp/experiments/%i"%int(time.time())
-            if osp.exists(self.output_dir):
-                print("Warning: Log dir %s already exists! Storing info there anyway."%self.output_dir)
-            else:
-                os.makedirs(self.output_dir)
-
-            if osp.exists(self.output_dir+"/models"):
-                print("Warning: models file exists")
-            else:
-                os.makedirs(self.output_dir+"/models")
-                
-            self.output_file = open(osp.join(self.output_dir, output_fname), 'w')
-            atexit.register(self.output_file.close)
-            print(colorize("Logging data to %s"%self.output_file.name, 'green', bold=True))
+        self.output_dir = output_dir or "/tmp/experiments/%i"%int(time.time())
+        if osp.exists(self.output_dir):
+            print("Warning: Log dir %s already exists! Storing info there anyway."%self.output_dir)
         else:
-            self.output_dir = None
-            self.output_file = None
+            os.makedirs(self.output_dir)
+
+        if osp.exists(self.output_dir+"/models"):
+            print("Warning: models file exists")
+        else:
+            os.makedirs(self.output_dir+"/models")
+            
+        self.output_file = open(osp.join(self.output_dir, output_fname), 'w')
+        atexit.register(self.output_file.close)
+        print(colorize("Logging data to %s"%self.output_file.name, 'green', bold=True))
+
         self.first_row=True
         self.log_headers = []
         self.log_current_row = {}
@@ -260,13 +192,11 @@ class Logger:
         self.version = version
         self.engine_path = plot_name_path
         hms_time = time.strftime("%Y-%m-%d_%H-%M-%S")
-        # subfolder = ''.join([hms_time, '-', exp_name, '_s', str(seed)])
         self.record_file_name = f"record_{hms_time}.txt"
 
     def log(self, msg, color='green'):
         """Print a colorized message to stdout."""
-        if True:#proc_id()==0:
-            print(colorize(msg, color, bold=True))
+        print(colorize(msg, color, bold=True))
 
     def log_tabular(self, key, val):
         """
@@ -296,15 +226,6 @@ class Logger:
         output_dir = dirname(self.output_dir)
         with open(osp.join(output_dir, "exp_data.json"), 'a') as out:
             out.write(output)
-        # config_json = convert_json(status)
-        # if self.exp_name is not None:
-        #     config_json['exp_name'] = self.exp_name
-        # if True:#proc_id()==0:
-        #     output = json.dumps(config_json, separators=(',',':\t'), indent=4, sort_keys=True)
-        #     print(colorize('Saving status:\n', color='cyan', bold=True))
-        #     print(output)
-        #     with open(osp.join(self.output_dir, "status.json"), 'w') as out:
-        #         out.write(output)
 
     # save final results across different seeds
     def save_results(self,result):
@@ -340,12 +261,12 @@ class Logger:
         config_json = convert_json(config)
         if self.engine is not None:
             config_json['engine'] = config["engine"]
-        if True:#proc_id()==0:
-            output = json.dumps(config_json, separators=(',',':\t'), indent=4, sort_keys=True)
-            print(colorize('Saving config:\n', color='cyan', bold=True))
-            print(output)
-            with open(osp.join(self.output_dir, "config.json"), 'w') as out:
-                out.write(output)
+
+        output = json.dumps(config_json, separators=(',',':\t'), indent=4, sort_keys=True)
+        print(colorize('Saving config:\n', color='cyan', bold=True))
+        print(output)
+        with open(osp.join(self.output_dir, "config.json"), 'w') as out:
+            out.write(output)
 
 
     def save_state(self, state_dict, model, itr=None):
@@ -368,21 +289,19 @@ class Logger:
             model (nn.Module): A model which contains the policy.
             itr: An int, or None. Current iteration of training.
         """
-        if True:#proc_id()==0:
-            fname = 'vars.pkl' if itr is None else 'vars%d.pkl'%itr
-            try:
-                joblib.dump(state_dict, osp.join(self.output_dir, fname))
-            except:
-                self.log('Warning: could not pickle state_dict.', color='red')
-            self._torch_save(model, itr)
+
+        fname = 'vars.pkl' if itr is None else 'vars%d.pkl'%itr
+        try:
+            joblib.dump(state_dict, osp.join(self.output_dir, fname))
+        except:
+            self.log('Warning: could not pickle state_dict.', color='red')
+        self._torch_save(model, itr)
 
     def _torch_save(self, model, itr=None):
-        if True:#proc_id()==0:
-            fname = 'torch_save.pt' if itr is None else 'torch_save%d.pt'%itr
-            torch.save(model, osp.join(self.output_dir, fname))
-            
+        fname = 'torch_save.pt' if itr is None else 'torch_save%d.pt'%itr
+        torch.save(model, osp.join(self.output_dir, fname))
+        
     def save_model(self,model_state_dict,fname):
-        # fname = 'torch_save.pt' if itr is None else 'torch_save%d.pt'%itr
         torch.save(model_state_dict, osp.join(self.output_dir+"/models", fname))
 
     def load_model(self,fname):
@@ -394,26 +313,24 @@ class Logger:
 
         Writes both to stdout, and to the output file.
         """
-        if True:#proc_id()==0:
-            vals = []
-            key_lens = [len(key) for key in self.log_headers]
-            max_key_len = max(15,max(key_lens))
-            keystr = '%'+'%d'%max_key_len
-            fmt = "| " + keystr + "s | %15s |"
-            n_slashes = 22 + max_key_len
-            print("-"*n_slashes)
-            for key in self.log_headers:
-                val = self.log_current_row.get(key, "")
-                valstr = "%8.3g"%val if hasattr(val, "__float__") else val
-                print(fmt%(key, valstr))
-                vals.append(val)
-            print("-"*n_slashes)
-            # print("self.output_file",self.output_file)
-            if self.output_file is not None:
-                if self.first_row:
-                    self.output_file.write("\t".join(self.log_headers)+"\n")
-                self.output_file.write("\t".join(map(str,vals))+"\n")
-                self.output_file.flush()
+        vals = []
+        key_lens = [len(key) for key in self.log_headers]
+        max_key_len = max(15,max(key_lens))
+        keystr = '%'+'%d'%max_key_len
+        fmt = "| " + keystr + "s | %15s |"
+        n_slashes = 22 + max_key_len
+        print("-"*n_slashes)
+        for key in self.log_headers:
+            val = self.log_current_row.get(key, "")
+            valstr = "%8.3g"%val if hasattr(val, "__float__") else val
+            print(fmt%(key, valstr))
+            vals.append(val)
+        print("-"*n_slashes)
+        if self.output_file is not None:
+            if self.first_row:
+                self.output_file.write("\t".join(self.log_headers)+"\n")
+            self.output_file.write("\t".join(map(str,vals))+"\n")
+            self.output_file.flush()
         self.log_current_row.clear()
         self.first_row=False
 
