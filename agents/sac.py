@@ -7,17 +7,14 @@ import gym
 import time
 from agents import core,agent
 from utils.logx import EpochLogger
-# from torch.utils.tensorboard import SummaryWriter
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 
 class ReplayBuffer:
     """
     A simple FIFO experience replay buffer for SAC agents.
     """
-
     def __init__(self, obs_dim, act_dim, size):
         self.obs_buf = np.zeros(core.combined_shape(size, obs_dim), dtype=np.float32)
         self.obs2_buf = np.zeros(core.combined_shape(size, obs_dim), dtype=np.float32)
@@ -39,60 +36,6 @@ class ReplayBuffer:
         self.done_buf[self.ptr] = done
         self.ptr = (self.ptr+1) % self.max_size
         self.size = min(self.size+1, self.max_size)
-
-    def approx_v(self,state,q,pi):
-        M = 20
-        with torch.no_grad():
-            states = state.repeat(M, 1)
-            actions,logp_actions = pi(states)
-            q_value_list = q(states, actions)
-            # q1_pi = self.ac_targ.q1(states, actions)
-            # q2_pi = self.ac_targ.q2(states, actions)
-            qs = torch.min(q_value_list)
-            # qs = self.ac_targ.q1(states, actions)
-            # qs = qs-self.alpha*logp_actions # with entroy
-            qs_split = torch.split(qs, state.shape[0])
-            qs_mean = torch.mean(torch.stack(qs_split), dim=0)
-        return qs_mean
-
-
-    def calculate_nstep_adv(self,q,pi,state,idx):
-        with torch.no_grad():
-            v = self.approx_v(state,q,pi)
-            dicounted_return = self.calcuate_n_step_return(idx)
-            v_cpu = v.detach().cpu().numpy()
-            n_adv = dicounted_return - v_cpu
-
-        return n_adv,dicounted_return,v_cpu
-
-
-    def calcuate_n_step_return(self,ind_start):
-        discounted_return = self.discounted_returns[ind_start].reshape(-1)
-        terminal_states_idx = self.terminate_states[ind_start]
-
-        early_cut = self.early_cut[terminal_states_idx]
-        early_cut_state_idx = np.where(early_cut == 1)
-        is_empty = early_cut_state_idx[0].size == 0
-
-        if is_empty:
-            return discounted_return
-
-        early_cut_state_idx = terminal_states_idx[early_cut_state_idx]
-        terminal_states_unique = np.unique(terminal_states_idx)
-
-        terminal_states = torch.FloatTensor(
-            self.buf.next_state[terminal_states_unique]).to(device)
-
-        # *torch.FloatTensor(early_cut)#.to(device)
-        v_last = self.approx_v(terminal_states)
-
-        for state_idx, v in zip(terminal_states_unique, v_last):
-            v_last_idx = np.where(terminal_states_idx == state_idx)
-            # v need to multiple gamma's N
-            discounted_return[v_last_idx] += v.item()*self.gamma
-
-        return discounted_return
-
 
     def load(self, save_folder, size=-1):
         reward = [];not_done = []
@@ -132,33 +75,17 @@ class agent(agent.agent):
         np.random.seed(args.seed)
         self.logger = logger
         self.all_steps = 0
-        # self.alpha_q=0 # hyperparameter for entroy 0.2
         self.alpha=0.2 #default 0.2
 
         self.env = gym.make(args.env)
         self.env.seed(args.seed)
-        # self.env.action_space.seed(args.seed)
         self.obs_dim = self.env.observation_space.shape
         self.act_dim = self.env.action_space.shape[0]
 
-        # if args.version != "debug":
-        #     self.writer = SummaryWriter("./sac_e")
-
-        # Create actor-critic module and target networks
-        # self.ac = actor_critic(self.env.observation_space, self.env.action_space, **ac_kwargs).to(device) ## too slow
-        # self.ac_targ = deepcopy(self.ac)
         self.replay_buffer = ReplayBuffer(obs_dim=self.obs_dim, act_dim=self.act_dim, size=replay_size)
 
-        print("debug in sac agent before offline")
         if self.args.offline:
             self.replay_buffer.load(f"./buffers/{args.dataset}", args.load_buffer_size)
-
-        # self.q_params = itertools.chain(self.ac.q1.parameters(), self.ac.q2.parameters())
-
-        # # Set up optimizers for policy and q-function
-        # self.pi_optimizer = Adam(self.ac.pi.parameters(), lr=lr)
-        # self.q_optimizer = Adam(self.q_params, lr=lr)
-        # print("debug in sac agent after init")
 
 
     def get_action(self,o, deterministic=False):
@@ -195,9 +122,7 @@ class agent(agent.agent):
 
         return loss_q, q_info
 
-
     # Set up function for computing SAC pi loss
-
     def compute_loss_pi(self, data):
         # assert False
         o = data['state']
@@ -214,13 +139,9 @@ class agent(agent.agent):
         self.logger.store(logp_pi_t=logp_pi.mean().item(),
                         q_pi_t=q_pi.mean().item())
 
-
         return loss_pi, pi_info
 
-
-
     def update(self,data,polyak=0.995):
-        # First run one gradient descent step for Q1 and Q2
         self.q_optimizer.zero_grad()
         loss_q, q_info = self.compute_loss_q(data)
         loss_q.backward()
@@ -278,7 +199,6 @@ class agent(agent.agent):
 
         return avg_reward,trajectory_lenght
 
-
     def train(self, batch_size=100):
         time_start = time.time()
         for t in range(int(self.args.max_timesteps)):
@@ -294,33 +214,18 @@ class agent(agent.agent):
             if t % self.args.print_freq == 0: # print every 3000 steps
                 # assert self.args.print_freq == 3000
                 if not ("debug" in self.args.version):
-                    # std_logpi = self.logger.get_stats("q_pi_std_t")[0] + self.logger.get_stats("logp_pi_t")[0]
-                    # self.writer.add_scalar("q_pi_mean_t",self.logger.get_stats("q_pi_mean_t")[0],t)
-                    # self.writer.add_scalar("upper_v_t",self.logger.get_stats("upper_v_t")[0],t)
                     self.writer.add_scalar("q_pi_t",self.logger.get_stats("q_pi_t")[0],t)
                     self.writer.add_scalar("logp_pi_t",self.logger.get_stats("logp_pi_t")[0],t)
-                    # self.writer.add_scalar("filterp_t",self.logger.get_stats("filterp_t")[0],t)
                     self.writer.add_scalar("TestScore",self.logger.get_stats("TestScore")[0],t)
-                    # self.writer.add_scalar("std_logpi",std_logpi,t)
                     
                 self.logger.log_tabular("TimeSteps",t)
                 self.logger.log_tabular("TestScore",average_only=True)
                 self.logger.log_tabular("trajectory_lenght",trajectory_lenght)
                 self.logger.log_tabular("Time",int(time.time()-time_start))
-
-                # self.logger.log_tabular("q_pi_mean_t",average_only=True)
-                # self.logger.log_tabular("upper_v_t",average_only=True)
-                # self.logger.log_tabular('q_pi_std_t', average_only=True)
-                # self.logger.log_tabular("logp_pi_t",average_only=True)
-                # self.logger.log_tabular('filterp_t', average_only=True)
                 self.logger.dump_tabular()
 
         self.writer.flush()
         self.writer.close()
-                
-
-
-
 
     def train_sac_online(self,start_steps=10000,batch_size=100,max_ep_len=1000,update_after=1000, update_every=50):#update_every=50
         # Prepare for interaction with environment
@@ -366,24 +271,11 @@ class agent(agent.agent):
             if t % self.args.print_freq == 0: # print every 3000 steps
 
                 test_score,trajectory_lenght = self.test_policy(eval_episodes=5)
-                # self.logger.store(TestScore=int(test_score))
-                # if not ("debug" in self.args.version):
-                #     self.writer.add_scalar("q_pi_t",self.logger.get_stats("q_pi_t")[0],t)
-                #     self.writer.add_scalar("logp_pi_t",self.logger.get_stats("logp_pi_t")[0],t)
-                #     # self.writer.add_scalar("filterp_t",self.logger.get_stats("filterp_t")[0],t)
-                #     self.writer.add_scalar("TestScore",self.logger.get_stats("TestScore")[0],t)
-                #     # self.writer.add_scalar("std_logpi",std_logpi,t)
-                    
+
                 self.logger.log_tabular("TimeSteps",t)
                 self.logger.log_tabular("TestScore",test_score)
                 self.logger.log_tabular("Time",int(time.time()-time_start))
                 self.logger.log_tabular("trajectory_lenght",trajectory_lenght)
-
-                # self.logger.log_tabular("q_pi_mean_t",average_only=True)
-                # self.logger.log_tabular("upper_v_t",average_only=True)
-                # self.logger.log_tabular('q_pi_std_t', average_only=True)
-                # self.logger.log_tabular("logp_pi_t",average_only=True)
-                # self.logger.log_tabular('filterp_t', average_only=True)
                 self.logger.dump_tabular()
 
 

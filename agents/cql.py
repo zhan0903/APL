@@ -12,8 +12,6 @@ from rlkit_cql.torch.core import np_to_pytorch_batch
 from torch import nn as nn
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-# device = torch.device("cpu")
-
 
 
 def load_hdf5(dataset, replay_buffer):
@@ -33,7 +31,6 @@ class ReplayBuffer(sac.ReplayBuffer):
     """
     A simple FIFO experience replay buffer for SAC agents.
     """
-
     def __init__(self, obs_dim, act_dim, size):
         super().__init__(obs_dim, act_dim, size)
 
@@ -62,7 +59,6 @@ def zeros(*sizes, torch_device=None, **kwargs):
 class agent(sac.agent):
     def __init__(self, args, logger, replay_size=int(2e6), policy_lr=1E-4, qf_lr=3E-4, lagrange_thresh=-1.0, optimizer_class=torch.optim.Adam):
         super().__init__(args, logger)
-        print("debug in cql agent")
         self.num_random = 10
         self.discrete = False
         self.temp = 1.0
@@ -82,7 +78,7 @@ class agent(sac.agent):
         obs_dim = expl_env.observation_space.low.size
         action_dim = eval_env.action_space.low.size
 
-        self.qf1 = FlattenMlp(  ## very slow for pytorch 1.4 and cudatoolkit 10
+        self.qf1 = FlattenMlp( 
                 input_size=obs_dim + action_dim,
                 output_size=1,
                 hidden_sizes=[M, M, M],
@@ -111,21 +107,12 @@ class agent(sac.agent):
         
         self.eval_policy = MakeDeterministic(self.policy).to(device)
 
-        # self.replay_buffer = ReplayBuffer(obs_dim=obs_dim, act_dim=action_dim, size=replay_size)
-        print("debug: before load dataset")
-
         self.replay_buffer = EnvReplayBuffer(
         int(3E6),
         expl_env,
         )
         load_hdf5(d4rl.qlearning_dataset(eval_env), self.replay_buffer)
-
-        print("after load dataset")
   
-        # self.buf = ReplayBuffer(obs_dim=self.obs_dim,
-        #                         act_dim=self.act_dim, size=replay_size)
-        # self.buf.load(f"./buffers/{args.dataset}", args.load_buffer_size)
-        
         self.with_lagrange = False # if lagrange_thresh < 0.0:
         if self.with_lagrange:
             self.target_action_gap = lagrange_thresh
@@ -135,8 +122,6 @@ class agent(sac.agent):
                 lr=qf_lr,
             )
 
-        # if self.use_automatic_entropy_tuning == True
-
         self.target_entropy = -np.prod(self.env.action_space.shape).item()
         self.log_alpha = zeros(1, requires_grad=True)
         self.alpha_optimizer = optimizer_class(
@@ -144,13 +129,10 @@ class agent(sac.agent):
             lr=policy_lr,
         )
 
-        # self.ac = actor_critic(self.env.observation_space, self.env.action_space, **ac_kwargs).to(device)
-        # self.ac_targ = deepcopy(self.ac)
-
         self.pi_optimizer = optimizer_class(self.policy.parameters(), lr=policy_lr)
         self.q1_optimizer = optimizer_class(self.qf1.parameters(), lr=qf_lr)
         self.q2_optimizer = optimizer_class(self.qf2.parameters(), lr=qf_lr)
-        # self.populate_replay_buffer()
+
 
     def populate_replay_buffer(self):
         dataset = d4rl.qlearning_dataset(self.env)
@@ -201,16 +183,11 @@ class agent(sac.agent):
             self.target_qf1(next_obs, new_next_actions),
             self.target_qf2(next_obs, new_next_actions)
         )
-        # no entory in q update
-        # target_q_values = target_q_values - self.alpha * new_log_pi
 
         q_target = self.reward_scale * rewards + (1. - terminals) * gamma * target_q_values
         q_target = q_target.detach()
 
         # MSE loss against Bellman backup
-        # qf1_loss = ((q1_pred - q_target)**2).mean()
-        # qf2_loss = ((q2_pred - q_target)**2).mean()
-        # loss_q = loss_q1 + loss_q2
         qf1_loss = self.qf_criterion(q1_pred,q_target)
         qf2_loss = self.qf_criterion(q2_pred,q_target)
 
@@ -234,11 +211,6 @@ class agent(sac.agent):
         q2_next_actions = self._get_tensor_values(
             obs, new_curr_actions_tensor, network=self.qf2)
 
-        # cat_q1 = torch.cat([q1_rand, q1_pred.unsqueeze(1), q1_next_actions, q1_curr_actions], 1)
-        # cat_q2 = torch.cat([q2_rand, q2_pred.unsqueeze(1), q2_next_actions, q2_curr_actions], 1)
-        # std_q1 = torch.std(cat_q1, dim=1)
-        # std_q2 = torch.std(cat_q2, dim=1)
-
         # importance sammpled version
         random_density = np.log(0.5 ** curr_actions_tensor.shape[-1])
         cat_q1 = torch.cat(
@@ -259,33 +231,14 @@ class agent(sac.agent):
         min_qf1_loss = min_qf1_loss - q1_pred.mean() * self.min_q_weight
         min_qf2_loss = min_qf2_loss - q2_pred.mean() * self.min_q_weight
 
-        # if self.with_lagrange:
-        #     alpha_prime = torch.clamp(
-        #         self.log_alpha_prime.exp(), min=0.0, max=1000000.0)
-        #     min_qf1_loss = alpha_prime * \
-        #         (min_qf1_loss - self.target_action_gap)
-        #     min_qf2_loss = alpha_prime * \
-        #         (min_qf2_loss - self.target_action_gap)
-
-        #     self.alpha_prime_optimizer.zero_grad()
-        #     alpha_prime_loss = (-min_qf1_loss - min_qf2_loss)*0.5
-        #     alpha_prime_loss.backward(retain_graph=True)
-        #     self.alpha_prime_optimizer.step()
-
         qf1_loss = qf1_loss + min_qf1_loss
         qf2_loss = qf2_loss + min_qf2_loss
 
         return qf1_loss, qf2_loss
 
     def explore(self,online_explore_steps,max_ep_len=1000):
-        # eval_env = gym.make(self.args.env)
-        # eval_env.seed(self.args.seed + 100)
-        # avg_reward = 0.
-        # self.explore_env.reset()
         o, ep_ret, ep_len = self.explore_env.reset(), 0, 0
         for _ in range(online_explore_steps):
-            # o = torch.from_numpy(o,dtype=torch.float32)
-            # o = torch.tensor(o, dtype=torch.float32)
             a, *_ = self.policy.get_action(o)
             o2, r, d, _ = self.explore_env.step(a)               
             ep_ret += r
@@ -312,11 +265,6 @@ class agent(sac.agent):
 
     def compute_loss_pi(self, data):
         o = data['observations'] # 'obs'
-        # pi, logp_pi = self.policy(o)
-        # pi, _, _, logp_pi, *_ = self.policy(
-        #     o, reparameterize=True, return_log_prob=True,
-        #     )
-
         # # automatic entropy tuning
         pi, policy_mean, policy_log_std, log_pi, *_ = self.policy(
         o, reparameterize=True, return_log_prob=True)
@@ -333,45 +281,11 @@ class agent(sac.agent):
         # Entropy-regularized policy loss
         loss_pi = (self.alpha * log_pi - q_pi).mean()
         
-        # self.logger.store(q_pi_min_t=q_pi.mean().item(),
-        #                   logp_pi_t=logp_pi.mean().item()
-        #                   )
-
-        # Useful info for logging
-        # pi_info = dict(LogPi=log_pi.cpu().detach().numpy(),
-        #                 q_pi_min_t=q_pi.mean().item(),
-        #                 logp_pi_t=log_pi.mean().item()
-        #             )
-        pi_info = {} # dict(logp_pi_t=log_pi.mean().item())
+        pi_info = {}
 
         self.logger.store(logp_pi_t=log_pi.mean().item())
 
         return loss_pi, pi_info
-
-    # def update_pi(self, data,t,log_pi):
-    #     # if t < self.policy_eval_start:
-    #     #     """
-    #     #     For the initial few epochs, try doing behaivoral cloning, if needed
-    #     #     conventionally, there's not much difference in performance with having 20k 
-    #     #     gradient steps here, or not having it
-    #     #     """
-    #     #     _,policy_log_prob = self.ac.pi(data['obs'], data['act'])
-    #     #     loss_pi = (self.alpha * log_pi - policy_log_prob).mean() 
-    #     #     q_pi_min = 0
-    #     #     logp_pi = 0
-    #     # else:
-    #     loss_pi, pi_info = self.compute_loss_pi(data)
-    #     q_pi_min = pi_info['q_pi_min_t']
-    #     logp_pi = pi_info['logp_pi_t']
-
-    #     self.pi_optimizer.zero_grad()
-    #     loss_pi.backward()
-    #     self.pi_optimizer.step()
-
-    #     self.logger.store(q_pi_min_t=q_pi_min,
-    #                       logp_pi_t=logp_pi
-    #                       )
-
 
     def test_policy(self, eval_episodes=5):
         # self.policy.cpu()
@@ -388,8 +302,6 @@ class agent(sac.agent):
                 avg_reward += reward
 
         avg_reward /= eval_episodes
-        # TestEpRet=100*self.test_env.get_normalized_score(ep_ret)
-
         return 100*eval_env.get_normalized_score(avg_reward),avg_reward
 
 
@@ -400,10 +312,6 @@ class agent(sac.agent):
             np_data = self.replay_buffer.random_batch(self.args.batch_size)
             data = np_to_pytorch_batch(np_data)
   
-
-            # # update p and pi
-            # self.update_q(data)
-            # self.update_pi(data,t,log_pi)
             loss_pi, pi_info = self.compute_loss_pi(data)
             q1_loss, q2_loss = self.compute_loss_q(data)
 
@@ -411,30 +319,13 @@ class agent(sac.agent):
             q1_loss.backward(retain_graph=True)
             self.q1_optimizer.step()
 
-            # with torch.autograd.set_detect_anomaly(True):
-            #     self.pi_optimizer.zero_grad()
-            #     loss_pi.backward(retain_graph=False)
-            #     self.pi_optimizer.step()
-
-
             self.q2_optimizer.zero_grad()
             q2_loss.backward(retain_graph=True)
             self.q2_optimizer.step()
 
-            # q_pi_min = pi_info['q_pi_min_t']
-            # logp_pi = pi_info['logp_pi_t']
-            # loss_pi, pi_info = self.compute_loss_pi(data)
-            # q_pi_min = pi_info['q_pi_min_t']
-            # logp_pi = pi_info['logp_pi_t']
-
-            # with torch.autograd.set_detect_anomaly(True):
             self.pi_optimizer.zero_grad()
             loss_pi.backward(retain_graph=False)
             self.pi_optimizer.step()
-
-            # self.logger.store(q_pi_min_t=q_pi_min,
-            #                 logp_pi_t=logp_pi
-            #                 )
 
             with torch.no_grad():
                 for p, p_targ in zip(self.qf1.parameters(), self.target_qf1.parameters()):
@@ -453,13 +344,6 @@ class agent(sac.agent):
                 if t % self.args.print_freq == 0:  # print every 3000 steps
                     self.logger.save_print(f"self.alpha:{self.alpha}")
                     if not ("debug" in self.args.version):
-                        # self.writer.add_scalar(
-                        #     "q_pi_min_t", self.logger.get_stats("q_pi_min_t")[0], t)
-                        # # self.writer.add_scalar("upper_v_t",self.logger.get_stats("upper_v_t")[0],t)
-                        # # self.writer.add_scalar("q_pi_std_t",self.logger.get_stats("q_pi_std_t")[0],t)
-                        # self.writer.add_scalar(
-                        #     "logp_pi_t", self.logger.get_stats("logp_pi_t")[0], t)
-                        # self.writer.add_scalar("filterp_t",self.logger.get_stats("filterp_t")[0],t)
                         self.writer.add_scalar(
                             "TestScore", self.logger.get_stats("TestScore")[0], t)
 
@@ -467,12 +351,7 @@ class agent(sac.agent):
                     self.logger.log_tabular("TestScore", average_only=True)
                     self.logger.log_tabular("NormScore",average_only=True)
                     self.logger.log_tabular("Time", int(time.time()-time_start))
-
-                    # self.logger.log_tabular("q_pi_min_t", average_only=True)
-                    # self.logger.log_tabular("upper_v_t",average_only=True)
-                    # self.logger.log_tabular('q_pi_std_t', average_only=True)
                     self.logger.log_tabular("logp_pi_t", average_only=True)
-                    # self.logger.log_tabular('filterp_t', average_only=True)
                     self.logger.dump_tabular()
 
         self.writer.flush()
@@ -487,10 +366,6 @@ class agent(sac.agent):
             np_data = self.replay_buffer.random_batch(self.args.batch_size)
             data = np_to_pytorch_batch(np_data)
   
-
-            # # update p and pi
-            # self.update_q(data)
-            # self.update_pi(data,t,log_pi)
             loss_pi, pi_info = self.compute_loss_pi(data)
             q1_loss, q2_loss = self.compute_loss_q(data)
 
@@ -498,30 +373,13 @@ class agent(sac.agent):
             q1_loss.backward(retain_graph=True)
             self.q1_optimizer.step()
 
-            # with torch.autograd.set_detect_anomaly(True):
-            #     self.pi_optimizer.zero_grad()
-            #     loss_pi.backward(retain_graph=False)
-            #     self.pi_optimizer.step()
-
-
             self.q2_optimizer.zero_grad()
             q2_loss.backward(retain_graph=True)
             self.q2_optimizer.step()
 
-            # q_pi_min = pi_info['q_pi_min_t']
-            # logp_pi = pi_info['logp_pi_t']
-            # loss_pi, pi_info = self.compute_loss_pi(data)
-            # q_pi_min = pi_info['q_pi_min_t']
-            # logp_pi = pi_info['logp_pi_t']
-
-            # with torch.autograd.set_detect_anomaly(True):
             self.pi_optimizer.zero_grad()
             loss_pi.backward(retain_graph=False)
             self.pi_optimizer.step()
-
-            # self.logger.store(q_pi_min_t=q_pi_min,
-            #                 logp_pi_t=logp_pi
-            #                 )
 
             with torch.no_grad():
                 for p, p_targ in zip(self.qf1.parameters(), self.target_qf1.parameters()):
@@ -531,36 +389,6 @@ class agent(sac.agent):
                 for p, p_targ in zip(self.qf2.parameters(), self.target_qf2.parameters()):
                     p_targ.data.mul_(polyak)
                     p_targ.data.add_((1 - polyak) * p.data)
-
-            if t % self.args.eval_freq == 0 and False:  # eval_freq should be 1000
-                norm_score, test_score = self.test_policy(eval_episodes=5)
-                self.logger.store(TestScore=int(test_score))
-                self.logger.store(NormScore=int(norm_score))
-
-                if t % self.args.print_freq == 0:  # print every 3000 steps
-                    self.logger.save_print(f"self.alpha:{self.alpha}")
-                    if not ("debug" in self.args.version):
-                        # self.writer.add_scalar(
-                        #     "q_pi_min_t", self.logger.get_stats("q_pi_min_t")[0], t)
-                        # # self.writer.add_scalar("upper_v_t",self.logger.get_stats("upper_v_t")[0],t)
-                        # # self.writer.add_scalar("q_pi_std_t",self.logger.get_stats("q_pi_std_t")[0],t)
-                        # self.writer.add_scalar(
-                        #     "logp_pi_t", self.logger.get_stats("logp_pi_t")[0], t)
-                        # self.writer.add_scalar("filterp_t",self.logger.get_stats("filterp_t")[0],t)
-                        self.writer.add_scalar(
-                            "TestScore", self.logger.get_stats("TestScore")[0], t)
-
-                    self.logger.log_tabular("TimeSteps", t)
-                    self.logger.log_tabular("TestScore", average_only=True)
-                    self.logger.log_tabular("NormScore",average_only=True)
-                    self.logger.log_tabular("Time", int(time.time()-time_start))
-
-                    # self.logger.log_tabular("q_pi_min_t", average_only=True)
-                    # self.logger.log_tabular("upper_v_t",average_only=True)
-                    # self.logger.log_tabular('q_pi_std_t', average_only=True)
-                    self.logger.log_tabular("logp_pi_t", average_only=True)
-                    # self.logger.log_tabular('filterp_t', average_only=True)
-                    self.logger.dump_tabular()
 
         self.writer.flush()
         self.writer.close()

@@ -225,8 +225,6 @@ class agent(object):
 
 
     def train_offline(self, explore_steps,train_steps, batch_size=256):
-        # self.total_it += 1
-        online = False
         w = 0
 
         for t in range(int(train_steps)):
@@ -234,11 +232,9 @@ class agent(object):
             p_t = np.random.uniform()
             if p_t < self.p_online and self.replay_buffer_online.num_steps_can_sample() > 10000:
                 state, action, next_state, reward, not_done = self.replay_buffer_online.sample(batch_size)
-                online = True
                 w = 0
             else:
                 state, action, next_state, reward, not_done = self.replay_buffer.sample(batch_size)
-                online = False
                 w = 1
 
         # Sample replay buffer 
@@ -296,16 +292,11 @@ class agent(object):
     def print_log(self,online_interaction,t,time_start):
 
         norm_score, test_score = self.test_policy(eval_episodes=5)
-        # self.logger.store(TestScore=int(test_score))
         self.logger.store(NormScore=int(norm_score))
         self.logger.log_tabular("EnvSteps",online_interaction)
         self.logger.log_tabular("TimeSteps", t)
-        # self.logger.log_tabular("TestScore", average_only=True)
         self.logger.log_tabular("NormScore",average_only=True)
         self.logger.log_tabular("Time", int(time.time()-time_start))
-        # self.logger.log_tabular("Qmean")
-        # self.logger.log_tabular("EpRet",average_only=True)
-        # self.logger.log_tabular("EpLen",average_only=True)
         self.logger.log_tabular("ReplayBufferS",self.replay_buffer_online._size)
         self.logger.log_tabular("ReplayBuffer",self.replay_buffer._size)
         self.logger.dump_tabular()

@@ -1,44 +1,24 @@
-# from utils.memory import ReplayBuffer #ray_get_and_free
 import gym
 import numpy as np
 import time,os
 import torch
-# import random
-# import statistics
-# import engines
 from utils.logx import EpochLogger
 import yaml
-# from torch.utils.tensorboard import SummaryWriter
 
 
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--env", default="walker2d-medium-v2")  # OpenAI gym environment name (need to be consistent with the dataset name)
+    parser.add_argument("--env", default="walker2d-medium-v0")  # OpenAI gym environment name (need to be consistent with the dataset name)
     parser.add_argument("--plot_name", type=str, default="debug")  # OpenAI gym environment name (need to be consistent with the dataset name)
     parser.add_argument("--exp_name", type=str)
-    parser.add_argument("--qs", default=3, type=int)
-    parser.add_argument("--average_window", default=1000, type=int)
-    parser.add_argument("--ps", default=5, type=int)
     parser.add_argument("--w", default=1, type=float)
-    parser.add_argument("--v", default=0.7, type=float)
-    parser.add_argument("--diversity", default=1, type=float)
-    parser.add_argument("--pessimistic", default=1, type=float)
     parser.add_argument("--batch_size", default=256, type=int)  # Mini batch size for networks
-
-    parser.add_argument("--oqs",default=5, type=int)
-    parser.add_argument("--beta_UB", default=4.66, type=float) # 4.66 [0,7]
-    parser.add_argument("--delta",default=23.5, type=float) # 23.5 [0,72]
     parser.add_argument("--alpha", default=2.5,type=float)  # Target network update rate [1,4]
-    parser.add_argument('--oac', dest="oac",  action='store_true') # defult False
-
-    # parser.add_argument("--dataset", default="d4rl-walker2d-medium-replay-v0")  # D4RL dataset name
     parser.add_argument("--seed", default=0, type=int)  # Sets Gym, PyTorch and Numpy seeds
     parser.add_argument("--eval_freq", default=1e3, type=int)  # 1e4 How often (time steps) we evaluate the policy
     parser.add_argument("--print_freq", default=3e3, type=int)  # 1e4 How often (time steps) we print out log
-    
     parser.add_argument("--online_size", default=20000, type=int)  # online replay buffer size
-    # parser.add_argument("--max_timesteps", default=300000, type=int)  # 1e6 Max time steps to run environment or train for (this defines buffer size)
     parser.add_argument("--max_envsteps", default=100000, type=int)
     parser.add_argument("--max_vae_trainstep", default=2e5, type=int) #2e5
     parser.add_argument('--engine', type=str, default="P0")
@@ -49,30 +29,13 @@ if __name__ == '__main__':
     parser.add_argument("--explore_steps", default=1000, type=int)
 
     # Need change every time before running
-    parser.add_argument('--version', type=str, default="12111709")
-    parser.add_argument('--conference', type=str, default="ICML2023")
-    # parser.add_argument('--G', type=int, default=5)
-
+    parser.add_argument('--version', type=str, default="")
     parser.add_argument('--offline', dest="offline",  action='store_true') # defult False
     parser.add_argument('--load_model', dest="load_model",  action='store_true') # defult False
     parser.add_argument('--save_model', dest="save_model",  action='store_true') # defult False
 
     parser.add_argument('--itr', default=None,  type=int) # model's name
     parser.add_argument('--model_dir', default="",  type=str) # model's name
-
-    # vpg
-    # parser.add_argument('--hid', type=int, default=64)
-    # parser.add_argument('--l', type=int, default=2)
-    # parser.add_argument('--steps', type=int, default=4000)
-    # parser.add_argument('--epochs', type=int, default=100)
-
-    # # sac
-    # parser.add_argument("--alpha", default=0.2)  # Target network update rate
-    # ABM
-    # parser.add_argument('--M', type=int, default=20)
-    # parser.add_argument("--tpi_size", default=100, type=int)  # sample trajectories size for pi
-    # parser.add_argument("--tq_size", default=5, type=int)  # sample trajectories size for q
-   
 
     # BCQ parameter
     parser.add_argument("--discount", default=0.99)  # Discount factor
@@ -113,11 +76,9 @@ if __name__ == '__main__':
         init_t = args.T_i 
         test_steps = 5000
         online_explore_steps = args.explore_steps # should > 1000
-        # offline_training_steps = online_explore_steps*10 # all offline training steps should be 1e6
         args.version = config_dict["version"]
         args.conference = config_dict["conference"]
         datadir = config_dict["data_dir"]
-
         offline_training_steps = config_dict["offline_training_steps"]
 
     args.engine = config_dict["engine"]
@@ -126,11 +87,7 @@ if __name__ == '__main__':
 
     if args.plot_name == "td3_on":
         init_t = 0
-        # max_steps = 1e6
 
-    # if args.exp_name == "motivation":
-    #     max_steps = 100000
-    #     init_t = 100000
     if args.save_model and args.load_model: assert False
     if args.load_model: assert args.itr != None; args.model_dir != ""
 
@@ -140,13 +97,8 @@ if __name__ == '__main__':
     logger.save_config(vars(args))
     print("logger_kwargs",logger_kwargs)
 
-    # work_dir = f"{datadir}/tensorboard_curves/{args.exp_name}/{args.env}/{args.plot_name}/{args.version}/s_{args.seed}"#/{time_stamp}"
-    # writer = SummaryWriter(work_dir)
 
-    if args.engine[0] == "e" or args.engine[0] == "E":
-        exec("from versions.{}.{} import agent".format(str(args.conference),str(args.engine)))
-    else:
-        exec("from agents.{} import agent".format(args.engine))
+    exec("from agents.{} import agent".format(args.engine))
 
     agent = agent(args,logger)
 
@@ -158,7 +110,6 @@ if __name__ == '__main__':
     online_interaction = 0
 
     agent.test_policy(eval_episodes=5)
-    # agent.logger.save_print(f"offline datasize:{agent.offline_replay_buffer._size}")
 
     while t_off < int(init_t):
         'offline pretraining'
@@ -166,7 +117,6 @@ if __name__ == '__main__':
         t_off += test_steps
         agent.print_log(0,t_off,time_start)
 
-    # exit(0)
 
     while online_interaction <= int(max_steps):
         'online explore'
