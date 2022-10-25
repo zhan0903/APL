@@ -77,7 +77,6 @@ if __name__ == '__main__':
         test_steps = 5000
         online_explore_steps = args.explore_steps # should > 1000
         args.version = config_dict["version"]
-        args.conference = config_dict["conference"]
         datadir = config_dict["data_dir"]
         offline_training_steps = config_dict["offline_training_steps"]
 
