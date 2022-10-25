@@ -184,7 +184,7 @@ def setup_logger_kwargs(args,version, env, exp_name, plot_name, seed=None, model
 
     # Make base path
     ymd_time = time.strftime("%Y-%m-%d_") if datestamp else ''
-    relpath = ''.join([ymd_time,plot_name,"_p",str(args.p_online),"_osize",str(args.online_size),"_v",str(args.v)])
+    relpath = ''.join([ymd_time,plot_name,"_p",str(args.p_online),"_osize",str(args.online_size)])
     # model_dir = osp.join(data_dir, env, relpath,model_dir+"_s0/models")
 
     if seed is not None:
